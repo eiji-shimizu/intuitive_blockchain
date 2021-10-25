@@ -76,8 +76,9 @@ namespace Ibc {
     /**
      * Node
     */
-    Node::Node(int no, int totalNumberOfNodes, bool shift)
+    Node::Node(int no, int shiftNo, int totalNumberOfNodes, bool shift)
         : no_{no},
+          shiftNo_{shiftNo},
           totalNumberOfNodes_{totalNumberOfNodes},
           shift_{shift}
     {
@@ -96,7 +97,63 @@ namespace Ibc {
 
     void Node::action()
     {
-        std::cout << "Node::action()" << std::endl;
+        try {
+            std::cout << "Node::action()" << std::endl;
+            // 明細作成(取引記録)
+            std::vector<Record> records;
+
+            // 明細送信処理(当番の場合は自身に送信したとみなす)
+
+            // 当番か否かで分岐
+            if (shift_) {
+                // 各店から明細が全て送られるのを待つ
+            }
+            else {
+                // 当番でなければブロックが送られて来るのを待つ
+            }
+        }
+        catch (const std::exception &e) {
+            std::cerr << e.what() << std::endl;
+        }
+        catch (...) {
+            std::cerr << "unexpected error." << std::endl;
+        }
+    }
+
+    /**
+     * Network
+    */
+    Network &Network::instance()
+    {
+        static Network *instance = new Network();
+        return *instance;
+    }
+
+    Network &Network::initialize(const std::vector<std::unique_ptr<Ibc::Node>> &nodes)
+    {
+        Network &instance = Network::instance();
+        instance.init(nodes);
+        return instance;
+    }
+
+    Network::Network()
+        : pNodes_{nullptr},
+          isInitialized_{false}
+    {
+    }
+
+    Network::~Network()
+    {
+        // noop
+    }
+
+    void Network::init(const std::vector<std::unique_ptr<Ibc::Node>> &nodes)
+    {
+        std::lock_guard<std::mutex> lock(mtx_);
+        if (!isInitialized_) {
+            pNodes_ = &nodes;
+            isInitialized_ = true;
+        }
     }
 
 } // namespace Ibc
