@@ -79,6 +79,11 @@ namespace Ibc {
         return oss.str();
     }
 
+    size_t Block::hash() const
+    {
+        return hash_;
+    }
+
     /**
      * Node
     */
@@ -124,29 +129,63 @@ namespace Ibc {
 
                 // 当番か否かで分岐
                 if (shift_) {
-                    // 各店から明細が全て送られるのを待つ
-                    std::unique_lock<std::mutex> lk(mtx_);
-                    cv_.wait(lk, [this] { return temp_.size() == totalNumberOfNodes_ - 1; });
-                    // 送られてきたデータをRecordのvectorにコピーする
-                    //std::vector<Record> save;
-                    for (const auto &e : temp_) {
-                        std::vector<Record> vec = std::any_cast<std::vector<Record>>(e);
-                        for (const Record &r : vec) {
-                            records.push_back(r);
+
+                    { // Scoped Locking
+                        // 各店から明細が全て送られるのを待つ
+                        std::unique_lock<std::mutex> lk(mtx_);
+                        cv_.wait(lk, [this] { return (temp_.size() == totalNumberOfNodes_ - 1); });
+                        std::cout << "SHIFT No" << no_ << " temp_.size() : " << temp_.size() << std::endl;
+                        // 送られてきたデータをRecordのvectorにコピーする
+                        for (const auto &e : temp_) {
+                            std::vector<Record> vec = std::any_cast<std::vector<Record>>(e);
+                            for (const Record &r : vec) {
+                                records.push_back(r);
+                            }
+                        }
+                        // データクリア
+                        temp_.clear();
+                    }
+
+                    // for (const Record &r : records) {
+                    //     std::cout << r.concatenate() << std::endl;
+                    // }
+                    // std::cout << std::endl;
+
+                    // ブロックを作成する
+                    size_t hash = 0;
+                    if (ledger_.size() == 0) {
+                        // 初回のブロックであった場合は前回のハッシュ値としてダミーの値を入れることにする
+                        hash = std::hash<std::string>()(Record{0, 0, 0}.concatenate());
+                    }
+                    else {
+                        hash = ledger_.back().hash();
+                    }
+                    Block b{records, hash};
+
+                    for (int i = 0; i < totalNumberOfNodes_; ++i) {
+                        // 自身以外のNoの店に送信する
+                        if (i != no_) {
+                            Network::instance().sendData(b, i);
                         }
                     }
-                    // データクリア
-                    temp_.clear();
-
-                    for (const Record &r : records) {
-                        std::cout << r.concatenate() << std::endl;
-                    }
-                    std::cout << std::endl;
+                    // ブロック追加
+                    ledger_.push_back(b);
                 }
                 else {
                     // 明細送信処理
                     Network::instance().sendData(records, shiftNo_);
-                    // 当番でなければブロックが送られて来るのを待つ
+
+                    { // Scoped Locking
+                        // ブロックが送られて来るのを待つ
+                        std::unique_lock<std::mutex> lk(mtx_);
+                        cv_.wait(lk, [this] { return temp_.size() == 1; });
+                        Block data = std::any_cast<Block>(temp_.at(0));
+                        ledger_.push_back(data);
+
+                        std::cout << "No" << no_ << " ledger_.size() : " << ledger_.size() << std::endl;
+                        // データクリア
+                        temp_.clear();
+                    }
                 }
 
                 // 当番を変更
@@ -162,7 +201,7 @@ namespace Ibc {
             }
         }
         catch (const std::exception &e) {
-            std::cerr << e.what() << std::endl;
+            std::cerr << "No" << no_ << " : " << e.what() << std::endl;
         }
         catch (...) {
             std::cerr << "unexpected error." << std::endl;

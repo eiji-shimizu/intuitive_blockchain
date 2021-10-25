@@ -31,7 +31,7 @@ namespace Ibc {
 
         // メンバ変数の値を連結した文字列を返す
         std::string concatenate() const;
-        
+
         std::time_t dateTime() const;
         int id() const;
         long amount() const;
@@ -54,6 +54,7 @@ namespace Ibc {
         Block(const std::vector<Record> &data, const size_t prev);
         ~Block();
         std::string toString() const;
+        size_t hash() const;
 
     private:
         // このブロックが持つ取引明細
