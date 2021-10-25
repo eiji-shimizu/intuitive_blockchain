@@ -24,8 +24,8 @@ namespace Ibc {
     // 明細1行に対応するクラス
     class Record {
     public:
-        Record(int id, long amount);
-        Record(std::time_t dateTime, int id, long amount);
+        Record(const int id, const long amount);
+        Record(const std::time_t dateTime, const int id, const long amount);
         ~Record();
 
         std::string toString() const;
@@ -35,11 +35,11 @@ namespace Ibc {
 
     private:
         // 取引時刻
-        std::time_t dateTime_;
+        const std::time_t dateTime_;
         // 取引ID
-        int id_;
+        const int id_;
         // 取引額
-        long amount_;
+        const long amount_;
     };
 
     // 取引記録のブロック
@@ -61,11 +61,10 @@ namespace Ibc {
     // 取引記録を分散管理する店
     class Node {
     public:
-        Node(int no, int shiftNo_, int totalNumberOfNodes, bool shift = false);
+        Node(const int no, const int shiftNo_, const int totalNumberOfNodes, const bool shift = false);
         ~Node();
         void start();
-
-        void sendRecords(const std::vector<Record> &records, int no);
+        void receiveData(const std::any data);
 
         // コピー禁止
         Node(const Node &) = delete;
@@ -78,7 +77,7 @@ namespace Ibc {
         void action();
 
         // 店番号
-        int no_;
+        const int no_;
         // 当番の店番号
         int shiftNo_;
         // 全ての店の数
@@ -89,12 +88,13 @@ namespace Ibc {
         std::vector<Block> ledger_;
         //std::vector<Record> temp_;
         // データ受信用変数
-        std::any temp_;
+        std::vector<std::any> temp_;
         // この店が処理をするスレッド
         std::thread thread_;
+        std::mutex mtx_;
     };
 
-    // 各店を含むネットワーク
+    // 店のネットワーク
     class Network {
     public:
         static Network &instance();
@@ -104,6 +104,9 @@ namespace Ibc {
 
         //void sendData(const std::vector<Record> &records, int no);
         void sendData(const std::any data, int no);
+
+        void setQuit();
+        bool getQuit();
 
         // コピー禁止
         Network(const Network &) = delete;
@@ -116,9 +119,14 @@ namespace Ibc {
         Network();
         void init(const std::vector<std::unique_ptr<Ibc::Node>> &nodes);
 
+        // 店のvectorへのポインタ
         const std::vector<std::unique_ptr<Ibc::Node>> *pNodes_;
+        // 初期化されたか否か
         bool isInitialized_;
+        // 初期化処理及びプログラム終了コマンド入力にのみ利用するミューテックス
         std::mutex mtx_;
+        // プログラムを終了させるフラグ
+        bool quit_;
     };
 
 } // namespa

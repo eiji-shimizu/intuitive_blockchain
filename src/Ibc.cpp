@@ -9,14 +9,14 @@ namespace Ibc {
     /**
      * Record
     */
-    Record::Record(int id, long amount)
+    Record::Record(const int id, const long amount)
         : dateTime_{std::time(nullptr)},
           id_{id},
           amount_{amount}
     {
     }
 
-    Record::Record(std::time_t dateTime, int id, long amount)
+    Record::Record(const std::time_t dateTime, const int id, const long amount)
         : dateTime_{dateTime},
           id_{id},
           amount_{amount}
@@ -76,7 +76,7 @@ namespace Ibc {
     /**
      * Node
     */
-    Node::Node(int no, int shiftNo, int totalNumberOfNodes, bool shift)
+    Node::Node(const int no, const int shiftNo, const int totalNumberOfNodes, const bool shift)
         : no_{no},
           shiftNo_{shiftNo},
           totalNumberOfNodes_{totalNumberOfNodes},
@@ -86,8 +86,9 @@ namespace Ibc {
 
     Node::~Node()
     {
-        if (thread_.joinable())
+        if (thread_.joinable()) {
             thread_.join();
+        }
     }
 
     void Node::start()
@@ -99,17 +100,32 @@ namespace Ibc {
     {
         try {
             std::cout << "Node::action()" << std::endl;
-            // 明細作成(取引記録)
-            std::vector<Record> records;
+            while (true) {
+                if (Network::instance().getQuit())
+                    return;
 
-            // 明細送信処理(当番の場合は自身に送信したとみなす)
+                // 明細作成(取引記録)
+                std::vector<Record> records;
+                records.push_back(Record{100, 9991});
+                records.push_back(Record{200, 9992});
+                records.push_back(Record{300, 9993});
 
-            // 当番か否かで分岐
-            if (shift_) {
-                // 各店から明細が全て送られるのを待つ
-            }
-            else {
-                // 当番でなければブロックが送られて来るのを待つ
+                // 明細送信処理(当番の場合は自身に送信したとみなす)
+                Network::instance().sendData(records, shiftNo_);
+
+                // 当番か否かで分岐
+                if (shift_) {
+                    // 各店から明細が全て送られるのを待つ
+                }
+                else {
+                    // 当番でなければブロックが送られて来るのを待つ
+                }
+
+                // 当番を変更
+                ++shiftNo_;
+                if (shiftNo_ == totalNumberOfNodes_) {
+                    shiftNo_ = 0;
+                }
             }
         }
         catch (const std::exception &e) {
@@ -118,6 +134,12 @@ namespace Ibc {
         catch (...) {
             std::cerr << "unexpected error." << std::endl;
         }
+    }
+
+    void Node::receiveData(const std::any data)
+    {
+        std::lock_guard<std::mutex> lk(mtx_);
+        temp_.push_back(data);
     }
 
     /**
@@ -138,13 +160,31 @@ namespace Ibc {
 
     Network::Network()
         : pNodes_{nullptr},
-          isInitialized_{false}
+          isInitialized_{false},
+          quit_{false}
     {
     }
 
     Network::~Network()
     {
         // noop
+    }
+
+    void Network::sendData(const std::any data, int no)
+    {
+        pNodes_->at(no)->receiveData(data);
+    }
+
+    void Network::setQuit()
+    {
+        std::lock_guard<std::mutex> lock(mtx_);
+        quit_ = true;
+    }
+
+    bool Network::getQuit()
+    {
+        std::lock_guard<std::mutex> lock(mtx_);
+        return quit_;
     }
 
     void Network::init(const std::vector<std::unique_ptr<Ibc::Node>> &nodes)
