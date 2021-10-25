@@ -13,6 +13,7 @@
 #endif
 
 #include <any>
+#include <condition_variable>
 #include <ctime>
 #include <mutex>
 #include <string>
@@ -24,14 +25,17 @@ namespace Ibc {
     // 明細1行に対応するクラス
     class Record {
     public:
-        Record(const int id, const long amount);
-        Record(const std::time_t dateTime, const int id, const long amount);
+        Record(const int id, const long amount, const int no);
+        Record(const std::time_t dateTime, const int id, const long amount, const int no);
         ~Record();
 
-        std::string toString() const;
+        // メンバ変数の値を連結した文字列を返す
+        std::string concatenate() const;
+        
         std::time_t dateTime() const;
         int id() const;
         long amount() const;
+        int no() const;
 
     private:
         // 取引時刻
@@ -40,6 +44,8 @@ namespace Ibc {
         const int id_;
         // 取引額
         const long amount_;
+        // 取引店No
+        const int no_;
     };
 
     // 取引記録のブロック
@@ -92,6 +98,7 @@ namespace Ibc {
         // この店が処理をするスレッド
         std::thread thread_;
         std::mutex mtx_;
+        std::condition_variable cv_;
     };
 
     // 店のネットワーク

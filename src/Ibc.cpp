@@ -2,6 +2,7 @@
 
 #include <functional>
 #include <iostream>
+#include <random>
 #include <sstream>
 
 namespace Ibc {
@@ -9,17 +10,19 @@ namespace Ibc {
     /**
      * Record
     */
-    Record::Record(const int id, const long amount)
+    Record::Record(const int id, const long amount, const int no)
         : dateTime_{std::time(nullptr)},
           id_{id},
-          amount_{amount}
+          amount_{amount},
+          no_{no}
     {
     }
 
-    Record::Record(const std::time_t dateTime, const int id, const long amount)
+    Record::Record(const std::time_t dateTime, const int id, const long amount, const int no)
         : dateTime_{dateTime},
           id_{id},
-          amount_{amount}
+          amount_{amount},
+          no_{no}
     {
     }
 
@@ -28,18 +31,20 @@ namespace Ibc {
         // noop
     }
 
-    std::string Record::toString() const
+    std::string Record::concatenate() const
     {
         std::ostringstream oss;
         oss << std::to_string(dateTime_)
             << std::to_string(id_)
-            << std::to_string(amount_);
+            << std::to_string(amount_)
+            << std::to_string(no_);
         return oss.str();
     }
 
     std::time_t Record::dateTime() const { return dateTime_; }
     int Record::id() const { return id_; }
     long Record::amount() const { return amount_; }
+    int Record::no() const { return no_; }
 
     /**
      * Block
@@ -50,7 +55,7 @@ namespace Ibc {
     {
         std::ostringstream oss;
         for (const auto &e : data_) {
-            oss << e.toString();
+            oss << e.concatenate();
         }
         hash_ = std::hash<std::string>()(oss.str());
     }
@@ -66,7 +71,8 @@ namespace Ibc {
         for (const auto &e : data_) {
             oss << e.dateTime() << ","
                 << e.id() << ","
-                << e.amount() << std::endl;
+                << e.amount() << ","
+                << e.no() << std::endl;
         }
         oss << std::to_string(prev_) << std::endl
             << std::to_string(hash_) << std::endl;
@@ -106,18 +112,40 @@ namespace Ibc {
 
                 // 明細作成(取引記録)
                 std::vector<Record> records;
-                records.push_back(Record{100, 9991});
-                records.push_back(Record{200, 9992});
-                records.push_back(Record{300, 9993});
-
-                // 明細送信処理(当番の場合は自身に送信したとみなす)
-                Network::instance().sendData(records, shiftNo_);
+                for (int i = 0; i < 10; ++i) {
+                    std::random_device rd;
+                    std::mt19937 eng(rd());
+                    // [100, 500)の範囲で実数を乱数生成する
+                    std::uniform_int_distribution<> dist(100, 500);
+                    // その時間(ミリ秒)スレッドを停止する
+                    std::this_thread::sleep_for(std::chrono::milliseconds(dist(eng)));
+                    records.push_back(Record{100 + i, 10000 + i, no_});
+                }
 
                 // 当番か否かで分岐
                 if (shift_) {
                     // 各店から明細が全て送られるのを待つ
+                    std::unique_lock<std::mutex> lk(mtx_);
+                    cv_.wait(lk, [this] { return temp_.size() == totalNumberOfNodes_ - 1; });
+                    // 送られてきたデータをRecordのvectorにコピーする
+                    //std::vector<Record> save;
+                    for (const auto &e : temp_) {
+                        std::vector<Record> vec = std::any_cast<std::vector<Record>>(e);
+                        for (const Record &r : vec) {
+                            records.push_back(r);
+                        }
+                    }
+                    // データクリア
+                    temp_.clear();
+
+                    for (const Record &r : records) {
+                        std::cout << r.concatenate() << std::endl;
+                    }
+                    std::cout << std::endl;
                 }
                 else {
+                    // 明細送信処理
+                    Network::instance().sendData(records, shiftNo_);
                     // 当番でなければブロックが送られて来るのを待つ
                 }
 
@@ -126,6 +154,11 @@ namespace Ibc {
                 if (shiftNo_ == totalNumberOfNodes_) {
                     shiftNo_ = 0;
                 }
+                // 自身のNoになった場合は当番となる
+                if (shiftNo_ == no_)
+                    shift_ = true;
+                else
+                    shift_ = false;
             }
         }
         catch (const std::exception &e) {
@@ -140,6 +173,7 @@ namespace Ibc {
     {
         std::lock_guard<std::mutex> lk(mtx_);
         temp_.push_back(data);
+        cv_.notify_one();
     }
 
     /**
