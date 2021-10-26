@@ -81,7 +81,12 @@ namespace Ibc {
         Node &operator=(Node &&) = delete;
 
     private:
+        // スレッド上で実行されるロジック
         void action();
+        // 取引明細を作成して返す
+        Record createRecord();
+        // 次の当番の店番号を返す
+        int getNextShiftNo() const;
 
         // 店番号
         const int no_;
@@ -91,6 +96,8 @@ namespace Ibc {
         int totalNumberOfNodes_;
         // 当番か否か
         bool shift_;
+        // 取引ID
+        int id_;
         // 取引記録
         std::vector<Block> ledger_;
         //std::vector<Record> temp_;

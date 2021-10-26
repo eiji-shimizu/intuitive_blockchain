@@ -1,5 +1,6 @@
 #include "Ibc.h"
 
+#include <cmath>
 #include <functional>
 #include <iostream>
 #include <random>
@@ -91,7 +92,8 @@ namespace Ibc {
         : no_{no},
           shiftNo_{shiftNo},
           totalNumberOfNodes_{totalNumberOfNodes},
-          shift_{shift}
+          shift_{shift},
+          id_{0}
     {
     }
 
@@ -120,11 +122,11 @@ namespace Ibc {
                 for (int i = 0; i < 10; ++i) {
                     std::random_device rd;
                     std::mt19937 eng(rd());
-                    // [100, 500)の範囲で実数を乱数生成する
+                    // [100, 500)の範囲で乱数生成する
                     std::uniform_int_distribution<> dist(100, 500);
                     // その時間(ミリ秒)スレッドを停止する
                     std::this_thread::sleep_for(std::chrono::milliseconds(dist(eng)));
-                    records.push_back(Record{100 + i, 10000 + i, no_});
+                    records.push_back(createRecord());
                 }
 
                 // 当番か否かで分岐
@@ -162,7 +164,17 @@ namespace Ibc {
                     }
                     Block b{records, hash};
 
-                    for (int i = 0; i < totalNumberOfNodes_; ++i) {
+                    // 作成したブロックを次にリーダーになる店から順に送信する
+                    const int point = getNextShiftNo();
+                    for (int i = point; i < totalNumberOfNodes_; ++i) {
+                        // pointから最後の店まで
+                        // 自身以外のNoの店に送信する
+                        if (i != no_) {
+                            Network::instance().sendData(b, i);
+                        }
+                    }
+                    for (int i = 0; i < point; ++i) {
+                        // 最初の店からpointのひとつ前の店まで
                         // 自身以外のNoの店に送信する
                         if (i != no_) {
                             Network::instance().sendData(b, i);
@@ -189,10 +201,7 @@ namespace Ibc {
                 }
 
                 // 当番を変更
-                ++shiftNo_;
-                if (shiftNo_ == totalNumberOfNodes_) {
-                    shiftNo_ = 0;
-                }
+                shiftNo_ = getNextShiftNo();
                 // 自身のNoになった場合は当番となる
                 if (shiftNo_ == no_)
                     shift_ = true;
@@ -206,6 +215,25 @@ namespace Ibc {
         catch (...) {
             std::cerr << "unexpected error." << std::endl;
         }
+    }
+
+    Record Node::createRecord()
+    {
+        std::random_device rd;
+        std::mt19937 eng(rd());
+        // [0, LONG_MAX)の範囲で取引金額を乱数生成する
+        std::uniform_real_distribution<> dist(1, LONG_MAX);
+        return Record{id_++, lround(dist(eng)), no_};
+    }
+
+    int Node::getNextShiftNo() const
+    {
+        int i = shiftNo_;
+        ++i;
+        if (i == totalNumberOfNodes_) {
+            i = 0;
+        }
+        return i;
     }
 
     void Node::receiveData(const std::any data)
