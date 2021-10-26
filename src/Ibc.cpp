@@ -1,6 +1,7 @@
 #include "Ibc.h"
 
 #include <cmath>
+#include <fstream>
 #include <functional>
 #include <iostream>
 #include <random>
@@ -70,10 +71,11 @@ namespace Ibc {
     {
         std::ostringstream oss;
         for (const auto &e : data_) {
-            oss << e.dateTime() << ","
+            oss << "{"
+                << e.dateTime() << ","
                 << e.id() << ","
                 << e.amount() << ","
-                << e.no() << std::endl;
+                << e.no() << "}" << std::endl;
         }
         oss << std::to_string(prev_) << std::endl
             << std::to_string(hash_) << std::endl;
@@ -101,6 +103,24 @@ namespace Ibc {
     {
         if (thread_.joinable()) {
             thread_.join();
+        }
+        // 取引記録をファイル出力する
+        try {
+            const std::string fileName = "data" + std::to_string(no_) + ".txt";
+            std::ofstream ofs{fileName};
+            if (ofs) {
+                for (const Block &b : ledger_) {
+                    ofs << b.toString();
+                    // ブロックごとに1行あける
+                    ofs << std::endl;
+                }
+            }
+        }
+        catch (const std::exception &e) {
+            std::cerr << "No" << no_ << " : " << e.what() << std::endl;
+        }
+        catch (...) {
+            std::cerr << "unexpected error." << std::endl;
         }
     }
 
