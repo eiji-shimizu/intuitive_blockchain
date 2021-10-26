@@ -8,7 +8,8 @@
 int main()
 {
     try {
-        const int max = 40;
+        // 店の数
+        const int max = 10;
         std::vector<std::unique_ptr<Ibc::Node>> nodes;
         for (int i = 0; i < max; ++i) {
             bool isShift = false;

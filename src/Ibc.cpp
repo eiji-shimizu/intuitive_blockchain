@@ -132,10 +132,10 @@ namespace Ibc {
     void Node::action()
     {
         try {
-            std::cout << "Node::action()" << std::endl;
             while (true) {
-                if (Network::instance().getQuit())
+                if (Network::instance().getQuit()) {
                     return;
+                }
 
                 // 明細作成(取引記録)
                 std::vector<Record> records;
@@ -155,8 +155,11 @@ namespace Ibc {
                     { // Scoped Locking
                         // 各店から明細が全て送られるのを待つ
                         std::unique_lock<std::mutex> lk(mtx_);
-                        cv_.wait(lk, [this] { return (temp_.size() == totalNumberOfNodes_ - 1); });
-                        std::cout << "SHIFT No" << no_ << " temp_.size() : " << temp_.size() << std::endl;
+                        cv_.wait(lk, [this] { return (temp_.size() == totalNumberOfNodes_ - 1 || Network::instance().getQuit()); });
+                        if (Network::instance().getQuit()) {
+                            // 終了コマンドが入力されていた場合
+                            return;
+                        }
                         // 送られてきたデータをRecordのvectorにコピーする
                         for (const auto &e : temp_) {
                             std::vector<Record> vec = std::any_cast<std::vector<Record>>(e);
@@ -168,12 +171,9 @@ namespace Ibc {
                         temp_.clear();
                     }
 
-                    // for (const Record &r : records) {
-                    //     std::cout << r.concatenate() << std::endl;
-                    // }
-                    // std::cout << std::endl;
-
                     // ブロックを作成する
+                    std::cout << "No" << no_ << " [START] CREATE BLOCK." << std::endl;
+
                     size_t hash = 0;
                     if (ledger_.size() == 0) {
                         // 初回のブロックであった場合は前回のハッシュ値としてダミーの値を入れることにする
@@ -200,6 +200,8 @@ namespace Ibc {
                             Network::instance().sendData(b, i);
                         }
                     }
+
+                    std::cout << "No" << no_ << " [END] SEND BLOCK IS COMPLETED." << std::endl;
                     // ブロック追加
                     ledger_.push_back(b);
                 }
@@ -210,11 +212,13 @@ namespace Ibc {
                     { // Scoped Locking
                         // ブロックが送られて来るのを待つ
                         std::unique_lock<std::mutex> lk(mtx_);
-                        cv_.wait(lk, [this] { return temp_.size() == 1; });
+                        cv_.wait(lk, [this] { return (temp_.size() == 1 || Network::instance().getQuit()); });
+                        if (Network::instance().getQuit()) {
+                            // 終了コマンドが入力されていた場合
+                            return;
+                        }
                         Block data = std::any_cast<Block>(temp_.at(0));
                         ledger_.push_back(data);
-
-                        std::cout << "No" << no_ << " ledger_.size() : " << ledger_.size() << std::endl;
                         // データクリア
                         temp_.clear();
                     }
